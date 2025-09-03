@@ -262,36 +262,70 @@ class AirwallexPaymentService:
             logger.error(f"Error checking payment link status: {e}")
             return False, {"error": str(e)}
     
-    def verify_webhook_signature(self, webhook_id: str, timestamp: str, signature: str) -> bool:
+    def verify_webhook_signature(
+        self, 
+        body: str,  # Raw JSON body as string
+        timestamp: str,  # x-timestamp header
+        signature: str,  # x-signature header
+        tolerance_seconds: int = 300  # 5 minutes tolerance for replay attack prevention
+    ) -> bool:
         """
-        Verify Airwallex webhook signature
+        Verify Airwallex webhook signature using HMAC-SHA256
+        
+        Based on official Airwallex documentation:
+        https://www.airwallex.com/docs/developer-tools__listen-for-webhook-events
         
         Args:
-            webhook_id: The webhook-id from headers
-            timestamp: The webhook-timestamp from headers
-            signature: The webhook-signature from headers
+            body: Raw JSON request body as string (MUST be unmodified)
+            timestamp: The x-timestamp header value
+            signature: The x-signature header value
+            tolerance_seconds: Maximum age of webhook to accept (default 5 minutes)
         
         Returns:
-            bool: True if signature is valid
+            bool: True if signature is valid and timestamp is within tolerance
         """
         
         if not self.webhook_secret:
             logger.warning("No webhook secret configured, skipping verification")
-            return True  # Allow in development
+            return True  # Allow in development only
         
         try:
-            # Construct the payload string
-            payload = f"{webhook_id}.{timestamp}"
+            # Step 1: Validate timestamp to prevent replay attacks
+            import time
+            try:
+                webhook_timestamp = int(timestamp)
+                current_timestamp = int(time.time())
+                
+                time_difference = abs(current_timestamp - webhook_timestamp)
+                if time_difference > tolerance_seconds:
+                    logger.warning(
+                        f"Webhook timestamp too old: {time_difference}s difference "
+                        f"(max allowed: {tolerance_seconds}s)"
+                    )
+                    return False
+            except (ValueError, TypeError) as e:
+                logger.error(f"Invalid timestamp format: {timestamp} - {e}")
+                return False
             
-            # Calculate expected signature
+            # Step 2: Prepare the payload for signature verification
+            # According to Airwallex docs: concatenate timestamp + raw JSON body
+            payload = f"{timestamp}{body}"
+            
+            # Step 3: Calculate expected signature using HMAC-SHA256
             expected_signature = hmac.new(
-                self.webhook_secret.encode(),
-                payload.encode(),
+                self.webhook_secret.encode('utf-8'),
+                payload.encode('utf-8'),
                 hashlib.sha256
             ).hexdigest()
             
-            # Compare signatures
-            return hmac.compare_digest(signature, expected_signature)
+            # Step 4: Timing-safe comparison to prevent timing attacks
+            is_valid = hmac.compare_digest(signature.lower(), expected_signature.lower())
+            
+            if not is_valid:
+                logger.warning("Webhook signature verification failed")
+                # Never log the actual signatures or secrets
+            
+            return is_valid
             
         except Exception as e:
             logger.error(f"Error verifying webhook signature: {e}")

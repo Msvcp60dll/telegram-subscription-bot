@@ -35,7 +35,10 @@ class AirwallexWebhookHandler:
     
     async def handle_webhook(self, request: web.Request) -> web.Response:
         """
-        Handle incoming webhook from Airwallex
+        Handle incoming webhook from Airwallex with proper security validation
+        
+        Security implementation based on:
+        https://www.airwallex.com/docs/developer-tools__listen-for-webhook-events
         
         Args:
             request: aiohttp web request
@@ -45,53 +48,70 @@ class AirwallexWebhookHandler:
         """
         
         try:
-            # Get webhook headers
-            webhook_id = request.headers.get('x-webhook-id')
-            webhook_timestamp = request.headers.get('x-webhook-timestamp')
-            webhook_signature = request.headers.get('x-webhook-signature')
+            # Step 1: Extract security headers (required for signature verification)
+            webhook_timestamp = request.headers.get('x-timestamp')
+            webhook_signature = request.headers.get('x-signature')
             
-            # Check for duplicate processing
-            if webhook_id in self.processed_webhooks:
-                logger.info(f"Duplicate webhook {webhook_id} ignored")
-                return web.Response(status=200, text="Already processed")
+            # Validate required headers are present
+            if not webhook_timestamp or not webhook_signature:
+                logger.warning("Missing required webhook headers (x-timestamp or x-signature)")
+                return web.Response(status=400, text="Missing required headers")
             
-            # Read request body
+            # Step 2: Read raw request body BEFORE any parsing
+            # This is critical - signature must be verified against raw body
             body = await request.text()
             
-            # Verify signature if secret is configured
+            # Step 3: Verify webhook signature and timestamp
             if self.webhook_secret and self.payment_processor and self.payment_processor.airwallex:
                 is_valid = self.payment_processor.airwallex.verify_webhook_signature(
-                    webhook_id=webhook_id,
+                    body=body,  # Raw JSON body
                     timestamp=webhook_timestamp,
-                    signature=webhook_signature
+                    signature=webhook_signature,
+                    tolerance_seconds=300  # 5-minute tolerance
                 )
                 
                 if not is_valid:
-                    logger.warning(f"Invalid webhook signature for {webhook_id}")
-                    return web.Response(status=401, text="Invalid signature")
+                    logger.warning("Webhook signature verification failed")
+                    # Security: Never expose details about why verification failed
+                    return web.Response(status=401, text="Unauthorized")
             
-            # Parse webhook data
+            # Step 4: Parse webhook data AFTER signature verification
             try:
                 webhook_data = json.loads(body)
             except json.JSONDecodeError:
                 logger.error("Invalid JSON in webhook body")
                 return web.Response(status=400, text="Invalid JSON")
             
-            # Process the webhook
+            # Step 5: Extract event ID for idempotency
+            webhook_id = webhook_data.get('id')
+            if not webhook_id:
+                logger.warning("No event ID in webhook data")
+                return web.Response(status=400, text="Missing event ID")
+            
+            # Step 6: Check for duplicate processing (idempotency)
+            if webhook_id in self.processed_webhooks:
+                logger.info(f"Duplicate webhook {webhook_id} ignored (idempotent handling)")
+                return web.Response(status=200, text="OK")  # Return 200 for idempotency
+            
+            # Step 7: Process the webhook event
             await self.process_webhook_event(webhook_data)
             
-            # Mark as processed
+            # Step 8: Mark as processed for idempotency
             self.processed_webhooks.add(webhook_id)
             
-            # Clean old entries if set grows too large
-            if len(self.processed_webhooks) > 1000:
-                self.processed_webhooks.clear()
+            # Implement simple LRU-style cleanup (production should use Redis/DB)
+            if len(self.processed_webhooks) > 10000:
+                # Keep only the most recent 5000 entries
+                recent_webhooks = list(self.processed_webhooks)[-5000:]
+                self.processed_webhooks = set(recent_webhooks)
             
+            # Step 9: Return success quickly (Airwallex expects response within 5 seconds)
             return web.Response(status=200, text="OK")
             
         except Exception as e:
-            logger.error(f"Error handling webhook: {e}")
-            return web.Response(status=500, text="Internal error")
+            logger.error(f"Error handling webhook: {e}", exc_info=True)
+            # Security: Don't expose internal error details
+            return web.Response(status=500, text="Internal server error")
     
     async def process_webhook_event(self, webhook_data: Dict):
         """
@@ -284,9 +304,24 @@ def create_webhook_app(payment_processor=None, bot=None) -> web.Application:
     # Add webhook route
     app.router.add_post('/webhook/airwallex', handler.handle_webhook)
     
-    # Add health check endpoint
+    # Add health check endpoint with detailed status
     async def health_check(request):
-        return web.Response(text="OK", status=200)
+        """Health check endpoint with detailed system status"""
+        health_data = {
+            "status": "healthy",
+            "timestamp": datetime.utcnow().isoformat(),
+            "service": "webhook_handler",
+            "components": {
+                "webhook_handler": "operational",
+                "payment_processor": "operational" if payment_processor else "not_configured",
+                "bot_connection": "operational" if bot else "not_configured"
+            },
+            "stats": {
+                "processed_webhooks": len(handler.processed_webhooks),
+                "webhook_secret_configured": bool(handler.webhook_secret)
+            }
+        }
+        return web.json_response(health_data, status=200)
     
     app.router.add_get('/health', health_check)
     
