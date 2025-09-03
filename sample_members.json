@@ -1,0 +1,27 @@
+[
+  {
+    "telegram_id": 123456789,
+    "username": "user1",
+    "full_name": "John Doe"
+  },
+  {
+    "telegram_id": 987654321,
+    "username": "user2",
+    "full_name": "Jane Smith"
+  },
+  {
+    "telegram_id": 555555555,
+    "username": "user3",
+    "full_name": "Bob Johnson"
+  },
+  {
+    "telegram_id": 444444444,
+    "username": null,
+    "full_name": "Alice Brown"
+  },
+  {
+    "telegram_id": 333333333,
+    "username": "user5",
+    "full_name": null
+  }
+]

@@ -1,0 +1,55 @@
+# Railway configuration for Telegram Subscription Bot
+# Documentation: https://docs.railway.com/deploy/config-as-code
+
+[build]
+# Use Nixpacks builder for automatic Python detection
+builder = "nixpacks"
+
+# Build command - install dependencies and prepare the app
+buildCommand = "pip install --upgrade pip && pip install -r requirements.txt"
+
+# Watch paths for automatic rebuilds (optional)
+watchPatterns = ["**/*.py", "requirements.txt", "railway.toml"]
+
+[deploy]
+# Number of instances (1 for bot applications)
+numReplicas = 1
+
+# Start command for the bot
+startCommand = "python main.py"
+
+# Health check configuration
+healthcheckPath = "/health"
+healthcheckTimeout = 300
+
+# Restart policy - always restart on failure
+restartPolicyType = "always"
+restartPolicyMaxRetries = 10
+
+# Region selection (optional, defaults to us-west1)
+region = "us-west1"
+
+# Resource limits (optional, adjust based on your needs)
+# Note: These are examples, adjust based on your Railway plan
+# memoryMB = 512
+# cpuCores = 0.5
+
+# Environment variable configuration
+# These will be set in Railway dashboard for security
+[env]
+# Python optimization
+PYTHONUNBUFFERED = "1"
+PYTHONDONTWRITEBYTECODE = "1"
+
+# Bot configuration (set these in Railway dashboard)
+# BOT_TOKEN = "your-bot-token"
+# GROUP_ID = "your-group-id"
+# ADMIN_USER_ID = "your-admin-id"
+# SUPABASE_URL = "your-supabase-url"
+# SUPABASE_SERVICE_KEY = "your-supabase-key"
+# AIRWALLEX_CLIENT_ID = "your-client-id"
+# AIRWALLEX_API_KEY = "your-api-key"
+# AIRWALLEX_WEBHOOK_SECRET = "set-after-deployment"
+# WEBHOOK_BASE_URL = "https://your-app.up.railway.app"
+# WEBHOOK_PORT = "8080"
+# ADMIN_PASSWORD = "generate-secure-password"
