@@ -51,7 +51,7 @@ AIRWALLEX_CLIENT_ID = os.getenv("AIRWALLEX_CLIENT_ID", "BxnIFV1TQkWbrpkEKaADwg")
 AIRWALLEX_API_KEY = os.getenv("AIRWALLEX_API_KEY", "df76d4f3a76c20ef97e1d9271bb7638bd5f235b773bb63a98d06c768b31b891a69cf06d99ef79e3f72ba1d76ad78ac47")
 AIRWALLEX_WEBHOOK_SECRET = os.getenv("AIRWALLEX_WEBHOOK_SECRET", "")
 WEBHOOK_BASE_URL = os.getenv("WEBHOOK_BASE_URL", "")  # e.g., https://your-domain.com
-WEBHOOK_PORT = int(os.getenv("WEBHOOK_PORT", "8080"))
+WEBHOOK_PORT = int(os.getenv("PORT", os.getenv("WEBHOOK_PORT", "8080")))
 
 # Supabase configuration
 SUPABASE_URL = os.getenv("SUPABASE_URL", "https://dijdhqrxqwbctywejydj.supabase.co")
