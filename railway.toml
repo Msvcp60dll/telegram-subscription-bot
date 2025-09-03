@@ -6,7 +6,7 @@
 builder = "nixpacks"
 
 # Build command - install dependencies and prepare the app
-buildCommand = "pip install --upgrade pip && pip install -r requirements.txt"
+buildCommand = "python -m pip install --upgrade pip && python -m pip install -r requirements.txt"
 
 # Watch paths for automatic rebuilds (optional)
 watchPatterns = ["**/*.py", "requirements.txt", "railway.toml"]
